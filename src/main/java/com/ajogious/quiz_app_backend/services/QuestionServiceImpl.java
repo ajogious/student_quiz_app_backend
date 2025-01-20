@@ -1,66 +1,129 @@
 package com.ajogious.quiz_app_backend.services;
 
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import com.ajogious.quiz_app_backend.exceptions.QuestionNotFoundException;
+import com.ajogious.quiz_app_backend.dtos.*;
 import com.ajogious.quiz_app_backend.models.Question;
-import com.ajogious.quiz_app_backend.repositories.QuestionRepository;
+import com.ajogious.quiz_app_backend.models.Test;
+import com.ajogious.quiz_app_backend.repositories.*;
 
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
 @Service
-public class QuestionServiceImpl implements IQuestionService {
+public class QuestionServiceImpl implements QuestionService {
 
 	private final QuestionRepository questionRepository;
 
-	@Override
-	public Question saveQuestion(Question question) {
-		return questionRepository.save(question);
-	}
+	private final TestRepository testRepository;
 
+	// Service implementation method to create a question
 	@Override
-	public List<Question> getAllQuestions() {
-		return questionRepository.findAll();
-	}
+	public String addQuestion(Long testId, QuestionRequestDTO questionRequestDTO) {
+		try {
+			Test test = testRepository.findById(testId).orElseThrow(() -> new RuntimeException("Test not found!"));
 
-	@Override
-	public Optional<Question> getQuestionById(Long id) {
-		return questionRepository.findById(id);
-	}
+			Optional<Question> existingQuestion = questionRepository
+					.findByQuestionTextAndTestId(questionRequestDTO.getQuestionText(), testId);
 
-	@Override
-	public List<String> getAllSubjects() {
-		return questionRepository.findDistinctSubjects();
-	}
+			if (existingQuestion.isPresent()) {
+				return "Question already exists!";
+			}
 
-	@Override
-	public Optional<Question> updateAQuestion(Long id, Question updateQuestion) {
-		return Optional.of(questionRepository.findById(id).map(existingQuestion -> {
-			existingQuestion.setQuestion(updateQuestion.getQuestion());
-			existingQuestion.setChoices(updateQuestion.getChoices());
-			existingQuestion.setCorrectAnswers(updateQuestion.getCorrectAnswers());
-			return questionRepository.save(existingQuestion);
-		}).orElseThrow(() -> new QuestionNotFoundException("Question not found with id: " + id)));
-	}
+			Question question = new Question();
+			question.setQuestionText(questionRequestDTO.getQuestionText());
+			question.setOptions(questionRequestDTO.getOptions());
+			question.setCorrectAnswer(questionRequestDTO.getCorrectAnswer());
+			question.setTest(test);
 
-	@Override
-	public void deleteAQuestion(Long id) {
-		if (!questionRepository.existsById(id)) {
-			throw new QuestionNotFoundException("Question not found.");
+			questionRepository.save(question);
+
+			return "Question added successfully.";
+		} catch (RuntimeException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to save question! Try again.", e);
 		}
-		questionRepository.deleteById(id);
 	}
 
+	// Service implementation method to get questions based on it's test
 	@Override
-	public List<Question> getQuestionsForUser(Integer numOfQuestiosn, String subject) {
-		Pageable pageable = PageRequest.of(0, numOfQuestiosn);
-		return questionRepository.findBySubject(subject, pageable).getContent();
+	public Page<QuestionResponseDTO> getQuestionsByTest(Long testId, int page, int size, String search) {
+	    Pageable pageable = PageRequest.of(page, size);
+
+	    Page<Question> questions = questionRepository.findByTestIdWithSearch(testId, search, pageable);
+	    
+	    Collections.shuffle(null);
+
+	    if (questions.isEmpty()) {
+	        throw new RuntimeException("No questions available.");
+	    }
+
+	    return questions.map(QuestionResponseDTO::new);
+	}
+	
+	// Getting questions with shuffles
+	@Override
+	public List<QuestionResponseDTO> getShuffledQuestionsByTest(Long testId) {
+	    // Fetch all questions for the given test ID
+	    List<Question> questions = questionRepository.findByTestId(testId);
+
+	    if (questions.isEmpty()) {
+	        throw new RuntimeException("No questions available.");
+	    }
+
+	    // Shuffle the questions
+	    Collections.shuffle(questions);
+
+	    // Shuffle the options for each question
+	    questions.forEach(question -> Collections.shuffle(question.getOptions()));
+
+	    // Convert the shuffled questions to DTOs and return
+	    return questions.stream().map(QuestionResponseDTO::new).toList();
+	}
+
+
+
+	// Service implementation method to update a question
+	@Override
+	public String updateQuestion(Long questionId, QuestionRequestDTO questionRequestDTO) {
+		try {
+			Question question = questionRepository.findById(questionId)
+					.orElseThrow(() -> new IllegalArgumentException("Question not found"));
+
+			question.setQuestionText(questionRequestDTO.getQuestionText());
+			question.setOptions(questionRequestDTO.getOptions());
+			question.setCorrectAnswer(questionRequestDTO.getCorrectAnswer());
+
+			questionRepository.save(question);
+
+			return "Question updated successfully.";
+		} catch (IllegalArgumentException e) {
+			return e.getMessage();
+		} catch (Exception e) {
+			return "Failed to update question! Try again.";
+		}
+	}
+
+	// Service implementation method to delete a question
+	@Override
+	public String deleteQuestion(Long questionId) {
+		try {
+			if (!questionRepository.existsById(questionId)) {
+				throw new IllegalArgumentException("Question not found.");
+			}
+			questionRepository.deleteById(questionId);
+			return "Question deleted successfully.";
+		} catch (IllegalArgumentException e) {
+			return e.getMessage();
+		} catch (Exception e) {
+			return "Failed to delete question! Try again.";
+		}
 	}
 
 }

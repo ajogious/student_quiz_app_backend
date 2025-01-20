@@ -1,102 +1,94 @@
 package com.ajogious.quiz_app_backend.controllers;
 
-import java.util.*;
+import com.ajogious.quiz_app_backend.dtos.QuestionRequestDTO;
+import com.ajogious.quiz_app_backend.dtos.QuestionResponseDTO;
+import com.ajogious.quiz_app_backend.services.QuestionService;
 
-import org.springframework.http.*;
-import org.springframework.web.bind.annotation.*;
-
-import com.ajogious.quiz_app_backend.dtos.ApiResponse;
-import com.ajogious.quiz_app_backend.exceptions.QuestionNotFoundException;
-import com.ajogious.quiz_app_backend.models.Question;
-import com.ajogious.quiz_app_backend.services.IQuestionService;
-
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.data.domain.Page;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+
+@CrossOrigin
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/quizzes")
+@RequestMapping("/api/questions")
 public class QuestionController {
 
-	private final IQuestionService questionService;
+	private final QuestionService questionService;
 
-	@PostMapping("/create-question")
-	public ResponseEntity<ApiResponse<Question>> saveQuestion(@Valid @RequestBody Question question) {
-		Question savedQuestion = questionService.saveQuestion(question);
-		return ResponseEntity.status(HttpStatus.CREATED)
-				.body(new ApiResponse<>("Question created successfully", "SUCCESS", savedQuestion));
-	}
-
-	@GetMapping("/all-questions")
-	public ResponseEntity<ApiResponse<List<Question>>> getAllQuestion() {
-		List<Question> questions = questionService.getAllQuestions();
-		return ResponseEntity.status(HttpStatus.OK)
-				.body(new ApiResponse<>("Fetched all questions", "SUCCESS", questions));
-	}
-
-	@GetMapping("/question/{id}")
-	public ResponseEntity<ApiResponse<Optional<Question>>> getQuestionById(@PathVariable Long id) {
-		Optional<Question> savedQuestion = questionService.getQuestionById(id);
-		if (savedQuestion.isPresent()) {
-			return ResponseEntity.status(HttpStatus.OK)
-					.body(new ApiResponse<>("Question found", "SUCCESS", savedQuestion));
-		} else {
-			throw new QuestionNotFoundException("Question not found");
+	// End point for adding a question to a test
+	@PostMapping("/{testId}/add-question")
+	public ResponseEntity<String> addQuestion(@PathVariable Long testId,
+			@RequestBody QuestionRequestDTO questionRequestDTO) {
+		try {
+			String response = questionService.addQuestion(testId, questionRequestDTO);
+			if (response.startsWith("Question added successfully.")) {
+				return ResponseEntity.ok(response);
+			} else {
+				return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+			}
+		} catch (Exception e) { 
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getMessage());
 		}
 	}
 
-	@PutMapping("/question/{id}/update")
-	public ResponseEntity<ApiResponse<Optional<Question>>> updateAQuestion(@PathVariable Long id,
-			@RequestBody Question updateQuestion) {
-		Optional<Question> updatedQuestion = questionService.updateAQuestion(id, updateQuestion);
-		return ResponseEntity.status(HttpStatus.OK)
-				.body(new ApiResponse<>("Question updated successfully", "SUCCESS", updatedQuestion));
+	// End point on getting questions based on it's test
+	@GetMapping("/{testId}/questions")
+	public ResponseEntity<?> getQuestionsByTest(
+	    @PathVariable Long testId,
+	    @RequestParam(defaultValue = "0") int page,
+	    @RequestParam(defaultValue = "10") int size,
+	    @RequestParam(defaultValue = "") String search
+	) {
+	    try {
+	        Page<QuestionResponseDTO> questions = questionService.getQuestionsByTest(testId, page, size, search);
+	        return ResponseEntity.ok(questions);
+	    } catch (RuntimeException e) {
+	        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+	    } catch (Exception e) {
+	        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("An error occurred: " + e.getMessage());
+	    }
+	}
+	
+	@GetMapping("/{testId}/shuffled-questions")
+	public ResponseEntity<List<QuestionResponseDTO>> getShuffledQuestions(@PathVariable Long testId) {
+	    List<QuestionResponseDTO> shuffledQuestions = questionService.getShuffledQuestionsByTest(testId);
+	    return ResponseEntity.ok(shuffledQuestions);
 	}
 
-	@DeleteMapping("/question/{id}/delete")
-	public ResponseEntity<ApiResponse<Void>> deleteAQuestion(@PathVariable Long id) {
-		questionService.deleteAQuestion(id);
-		return ResponseEntity.status(HttpStatus.OK)
-				.body(new ApiResponse<>("Question deleted successfully", "SUCCESS", null));
-	}
 
-	@GetMapping("/get-all-subjects")
-	public ResponseEntity<ApiResponse<List<String>>> getAllSubjects() {
-		List<String> subjects = questionService.getAllSubjects();
-		return ResponseEntity.status(HttpStatus.OK)
-				.body(new ApiResponse<>("Subjects fetched successfully", "SUCCESS", subjects));
-	}
-
-	@GetMapping("/get-questions-for-user")
-	public ResponseEntity<ApiResponse<Map<String, Object>>> getQuestionsForUser(
-			@RequestParam(required = false) Integer numOfQuestions, @RequestParam String subject) {
-
-		List<Question> allQuestions = questionService.getQuestionsForUser(numOfQuestions, subject);
-
-		if (allQuestions.isEmpty()) {
-			return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
-					new ApiResponse<>("No questions found for the given subject", "ERROR", Collections.emptyMap()));
+	// End point on updating a test question
+	@PutMapping("/{questionId}/update") 
+	public ResponseEntity<String> updateQuestion(@PathVariable Long questionId,
+			@RequestBody QuestionRequestDTO questionRequestDTO) {
+		try {
+			String response = questionService.updateQuestion(questionId, questionRequestDTO);
+			if (response.startsWith("Question updated successfully.")) {
+				return ResponseEntity.ok(response);
+			} else {
+				return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+			}
+		} catch (Exception e) {
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getMessage());
 		}
-
-		// If numOfQuestions is not provided, just return the available questions
-		if (numOfQuestions == null) {
-			Map<String, Object> response = new HashMap<>();
-			response.put("totalQuestions", allQuestions.size());
-			response.put("availableQuestions", allQuestions);
-			return ResponseEntity
-					.ok(new ApiResponse<>("Available questions fetched successfully", "SUCCESS", response));
-		}
-
-		// Shuffle and select the requested number of questions
-		Collections.shuffle(allQuestions);
-		int availableQuestions = Math.min(numOfQuestions, allQuestions.size());
-		List<Question> selectedQuestions = allQuestions.subList(0, availableQuestions);
-
-		Map<String, Object> response = new HashMap<>();
-		response.put("selectedQuestions", selectedQuestions);
-		response.put("totalQuestions", allQuestions.size());
-
-		return ResponseEntity.ok(new ApiResponse<>("Questions fetched successfully", "SUCCESS", response));
 	}
 
+	// End point on deleting a test question
+	@DeleteMapping("/{questionId}/delete")
+	public ResponseEntity<String> deleteQuestion(@PathVariable Long questionId) {
+		String response = questionService.deleteQuestion(questionId);
+		try {
+			if (response.startsWith("Question deleted successfully.")) {
+				return ResponseEntity.ok(response);
+			} else {
+				return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+			}
+		} catch(IllegalArgumentException e) {
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Something went wrong," + e.getMessage());
+		}
+	}
 }
