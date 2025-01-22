@@ -10,4 +10,4 @@ public class QuizAppBackendApplication {
 		SpringApplication.run(QuizAppBackendApplication.class, args);
 	}
 
-}
+}    

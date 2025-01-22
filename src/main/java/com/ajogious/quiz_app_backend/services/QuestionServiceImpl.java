@@ -58,7 +58,7 @@ public class QuestionServiceImpl implements QuestionService {
 
 	    Page<Question> questions = questionRepository.findByTestIdWithSearch(testId, search, pageable);
 	    
-	    Collections.shuffle(null);
+//	    Collections.shuffle(null);
 
 	    if (questions.isEmpty()) {
 	        throw new RuntimeException("No questions available.");

@@ -27,7 +27,7 @@ public class JWTUtil {
 		Map<String, Object> claims = new HashMap<>();
 
 		return Jwts.builder().claims().add(claims).subject(username).issuedAt(new Date(System.currentTimeMillis()))
-				.expiration(new Date(System.currentTimeMillis() + 1 * 60 * 1000)).and().signWith(getKey()).compact();
+				.expiration(new Date(System.currentTimeMillis() + 60 * 60 * 1000)).and().signWith(getKey()).compact();
 	}
 
 	private SecretKey getKey() {
